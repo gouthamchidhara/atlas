@@ -1,0 +1,15 @@
+/* Base reset. The design system lives in App.css. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+#root {
+  isolation: isolate;
+}
