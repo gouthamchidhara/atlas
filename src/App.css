@@ -121,13 +121,15 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Form controls don't inherit font-family by default — force the app font everywhere. */
+/* Form controls don't inherit font-family or color by default — force the app font
+   and text color everywhere so nested text (e.g. button titles) stays readable in every theme. */
 button,
 input,
 select,
 textarea,
 optgroup {
   font-family: inherit;
+  color: inherit;
 }
 
 .app-root {
@@ -758,7 +760,7 @@ optgroup {
   border-radius: 14px;
   color: var(--ink-2);
   background: transparent;
-  font: inherit;
+  font-size: 15px;
   font-weight: var(--w-semibold);
   cursor: pointer;
   transition: background var(--fast), color var(--fast), box-shadow var(--fast);
@@ -1373,6 +1375,22 @@ optgroup {
 .empty-glyph svg {
   width: 24px;
   height: 24px;
+}
+
+.empty-glyph--pulse {
+  animation: glyph-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes glyph-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .empty-state h2 {

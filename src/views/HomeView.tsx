@@ -14,6 +14,7 @@ type HomeViewProps = {
   greeting: string
   planTitle: string | null
   theme: 'light' | 'dark'
+  isBuilding: boolean
 }
 
 const suggestions = ['Scenic route', 'Quiet dinner', 'Back by 7pm', 'Kid-friendly']
@@ -31,6 +32,7 @@ export function HomeView({
   greeting,
   planTitle,
   theme,
+  isBuilding,
 }: HomeViewProps) {
   return (
     <div className="view">
@@ -78,7 +80,15 @@ export function HomeView({
         </div>
       )}
 
-      {cards.length === 0 ? (
+      {isBuilding && cards.length === 0 ? (
+        <div className="empty-state">
+          <span className="empty-glyph empty-glyph--pulse" aria-hidden="true">
+            <Navigation />
+          </span>
+          <h2>Finding real places…</h2>
+          <p>Pulling nearby spots for your destination.</p>
+        </div>
+      ) : cards.length === 0 ? (
         <div className="empty-state">
           <span className="empty-glyph" aria-hidden="true">
             <Navigation />

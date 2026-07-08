@@ -10,7 +10,8 @@ import { SavedView } from './views/SavedView'
 import { FALLBACK_CENTER, stopToCard } from './data/places'
 import type { FlightInput, FlightStatus } from './domain/flight'
 import type { TravelPlan } from './domain/trip'
-import { createTravelPlan, inferDestination } from './services/planner'
+import { inferDestination } from './services/planner'
+import { buildItinerary } from './services/itinerary'
 import { trackFlight } from './services/flightTracking'
 import { getPreferredMapProvider, openRouteInMaps, resolveMapProvider } from './services/maps'
 import './App.css'
@@ -70,9 +71,11 @@ function App() {
 
   const [timeBudget, setTimeBudget] = useState('3h')
   const [leaveBy, setLeaveBy] = useState('5:30 PM')
+  const [destination, setDestination] = useState('')
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const [selectedConstraints, setSelectedConstraints] = useState<string[]>([])
   const [plan, setPlan] = useState<TravelPlan | null>(null)
+  const [isBuilding, setIsBuilding] = useState(false)
 
   const [flightInput, setFlightInput] = useState<FlightInput>({ airlineFlight: '', travelDate: '', airport: '', icao24: '' })
   const [flightStatus, setFlightStatus] = useState<FlightStatus | null>(null)
@@ -138,31 +141,38 @@ function App() {
     if (detent === 'peek') setDetent('medium')
   }
 
-  const generatePlan = () => {
-    const destination = inferDestination(prompt, '') || 'your area'
-    const next = createTravelPlan({
-      destination,
-      prompt,
+  const generatePlan = async () => {
+    if (isBuilding) return
+    const destinationText = destination.trim() || inferDestination(prompt, '') || prompt.trim()
+    setIsBuilding(true)
+    showToast('Finding real places…')
+    const result = await buildItinerary({
+      destinationText,
       interests: selectedInterests,
       constraints: selectedConstraints,
       timeBudget,
       leaveBy,
       flightStatus: flightStatus?.label,
-      origin: userCenter ?? FALLBACK_CENTER,
+      origin: userCenter ?? undefined,
     })
-    setPlan(next)
+    setIsBuilding(false)
+    if ('error' in result) {
+      showToast(result.error)
+      return
+    }
+    setPlan(result.plan)
     setActiveId(null)
     setDetent('large')
-    showToast('Itinerary ready')
+    showToast(`Itinerary ready · ${result.plan.area}`)
   }
 
-  const submitPromptFromHome = () => {
+  const submitPromptFromHome = async () => {
     setTab('plan')
-    generatePlan()
+    await generatePlan()
   }
 
-  const replan = (option: string) => {
-    generatePlan()
+  const replan = async (option: string) => {
+    await generatePlan()
     showToast(`Replanned · ${option}`)
   }
 
@@ -233,6 +243,7 @@ function App() {
             greeting={greeting()}
             planTitle={plan?.title ?? null}
             theme={theme}
+            isBuilding={isBuilding}
           />
         )}
 
@@ -240,6 +251,8 @@ function App() {
           <PlanView
             prompt={prompt}
             onPromptChange={setPrompt}
+            destination={destination}
+            onDestinationChange={setDestination}
             timeBudget={timeBudget}
             onTimeBudgetChange={setTimeBudget}
             leaveBy={leaveBy}
@@ -251,6 +264,7 @@ function App() {
             selectedConstraints={selectedConstraints}
             onToggleConstraint={(value) => toggle(value, selectedConstraints, setSelectedConstraints)}
             plan={plan}
+            isBuilding={isBuilding}
             onGenerate={generatePlan}
             onReplan={replan}
             onDirections={handleDirections}

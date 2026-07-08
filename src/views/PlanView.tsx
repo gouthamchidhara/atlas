@@ -4,6 +4,8 @@ import type { TravelPlan } from '../domain/trip'
 type PlanViewProps = {
   prompt: string
   onPromptChange: (value: string) => void
+  destination: string
+  onDestinationChange: (value: string) => void
   timeBudget: string
   onTimeBudgetChange: (value: string) => void
   leaveBy: string
@@ -15,6 +17,7 @@ type PlanViewProps = {
   selectedConstraints: string[]
   onToggleConstraint: (value: string) => void
   plan: TravelPlan | null
+  isBuilding: boolean
   onGenerate: () => void
   onReplan: (option: string) => void
   onDirections: () => void
@@ -27,6 +30,8 @@ const timeOptions = ['1h', '2h', '3h', '4h+']
 export function PlanView({
   prompt,
   onPromptChange,
+  destination,
+  onDestinationChange,
   timeBudget,
   onTimeBudgetChange,
   leaveBy,
@@ -38,6 +43,7 @@ export function PlanView({
   selectedConstraints,
   onToggleConstraint,
   plan,
+  isBuilding,
   onGenerate,
   onReplan,
   onDirections,
@@ -60,6 +66,19 @@ export function PlanView({
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
           placeholder="I land at 2 PM, want a quiet dinner, short walks, back by 7."
+        />
+      </label>
+
+      <label className="field">
+        <span className="field-label">
+          <MapPin aria-hidden="true" />
+          Destination
+        </span>
+        <input
+          className="field-input"
+          value={destination}
+          onChange={(event) => onDestinationChange(event.target.value)}
+          placeholder="City, area, or landmark (e.g. Denton, Texas)"
         />
       </label>
 
@@ -121,9 +140,9 @@ export function PlanView({
         </div>
       </div>
 
-      <button type="button" className="btn-primary" onClick={onGenerate}>
+      <button type="button" className="btn-primary" onClick={onGenerate} disabled={isBuilding}>
         <Sparkles aria-hidden="true" />
-        {plan ? 'Rebuild itinerary' : 'Build itinerary'}
+        {isBuilding ? 'Finding real places…' : plan ? 'Rebuild itinerary' : 'Build itinerary'}
       </button>
 
       {plan && (
