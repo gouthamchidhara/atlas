@@ -86,48 +86,60 @@ function filtersForInterests(interests: string[]): Filter[] {
   return chosen.length > 0 ? chosen : DEFAULT_FILTERS
 }
 
-/** Query Overpass for real named POIs near a coordinate. */
+/** Public Overpass mirrors — tried in order for resilience against rate limits/outages. */
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
+]
+
+/** Query Overpass for real named POIs near a coordinate, with mirror fallback. */
 export async function fetchPois(
   center: Coordinates,
   interests: string[],
-  radiusMeters = 5000,
+  radiusMeters = 6000,
 ): Promise<Poi[]> {
   const filters = filtersForInterests(interests)
   const body = `[out:json][timeout:20];(${filters
     .map((filter) => `node${filter.selector}(around:${radiusMeters},${center.lat},${center.lng});`)
     .join('')});out center 60;`
 
-  try {
-    const response = await fetchWithTimeout('https://overpass-api.de/api/interpreter', 16000, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(body)}`,
-    })
-    if (!response.ok) return []
-    const data = (await response.json()) as {
-      elements: Array<{ id: number; lat?: number; lon?: number; tags?: Record<string, string> }>
-    }
-
-    const seen = new Set<string>()
-    const pois: Poi[] = []
-    for (const element of data.elements) {
-      const name = element.tags?.name
-      if (!name || element.lat == null || element.lon == null) continue
-      const key = name.toLowerCase()
-      if (seen.has(key)) continue
-      seen.add(key)
-      pois.push({
-        id: String(element.id),
-        name,
-        category: categorize(element.tags ?? {}),
-        lat: element.lat,
-        lng: element.lon,
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const response = await fetchWithTimeout(endpoint, 14000, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(body)}`,
       })
+      if (!response.ok) continue
+
+      const data = (await response.json()) as {
+        elements: Array<{ id: number; lat?: number; lon?: number; tags?: Record<string, string> }>
+      }
+
+      const seen = new Set<string>()
+      const pois: Poi[] = []
+      for (const element of data.elements) {
+        const name = element.tags?.name
+        if (!name || element.lat == null || element.lon == null) continue
+        const key = name.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        pois.push({
+          id: String(element.id),
+          name,
+          category: categorize(element.tags ?? {}),
+          lat: element.lat,
+          lng: element.lon,
+        })
+      }
+
+      if (pois.length > 0) return pois
+    } catch {
+      // try the next mirror
     }
-    return pois
-  } catch {
-    return []
   }
+  return []
 }
 
 function categorize(tags: Record<string, string>): string {
