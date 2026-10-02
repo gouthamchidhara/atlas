@@ -20,9 +20,10 @@ const DEFAULTS: Record<AlertKind, AlertTrigger> = {
   expiring: { kind: 'expiring', days: 60 },
   'subscription-change': { kind: 'subscription-change' },
   'better-card': { kind: 'better-card', minMissed: 1 },
+  'payment-due': { kind: 'payment-due', days: 5 },
 }
 
-const CREDIT_ONLY: AlertKind[] = ['utilization', 'statement-soon']
+const CREDIT_ONLY: AlertKind[] = ['utilization', 'statement-soon', 'payment-due']
 
 export function AlertForm({ alert, defaultCardId, onClose }: { alert?: AlertRule; defaultCardId?: string; onClose: () => void }) {
   const { state, dispatch } = useStore()
@@ -122,6 +123,7 @@ export function AlertForm({ alert, defaultCardId, onClose }: { alert?: AlertRule
             {t.kind === 'card-spend' && num('Monthly spend passes', t.amount, (amount) => setT({ amount }), state.settings.currency)}
             {t.kind === 'utilization' && num('Utilization at least', t.percent, (percent) => setT({ percent }), '%')}
             {t.kind === 'statement-soon' && num('Days before close', t.days, (days) => setT({ days }))}
+            {t.kind === 'payment-due' && num('Days before due date', t.days, (days) => setT({ days }))}
             {t.kind === 'expiring' && num('Days before expiry', t.days, (days) => setT({ days }))}
             {t.kind === 'better-card' && num('Missed reward at least', t.minMissed, (minMissed) => setT({ minMissed }), state.settings.currency)}
             {t.kind === 'merchant' && (

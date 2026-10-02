@@ -1,7 +1,7 @@
 import { ArrowRight, BadgeDollarSign, Flame, Repeat, Sparkles, Trophy } from 'lucide-react'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { category, SPEND_CATEGORIES } from '../domain/categories'
-import { bestCard, missedReward, rateFor, rewardFor } from '../domain/rewards'
+import { bestCard, isPoints, missedReward, pointsFor, rateFor, rateLabel, rewardFor } from '../domain/rewards'
 import { money, todayISO } from '../lib/format'
 import { addDays, daysBetween, parseISO } from '../lib/period'
 import { isSpend, spendByCategory } from '../lib/stats'
@@ -19,6 +19,7 @@ export function Insights({ onEditCard }: { onEditCard: (id: string) => void }) {
   const since90 = addDays(today, -89)
   const recent = state.transactions.filter((t) => t.date >= since90 && isSpend(t))
   const earned = recent.reduce((a, t) => a + rewardFor(t, cardMap.get(t.cardId)), 0)
+  const pointsEarned = recent.reduce((a, t) => a + pointsFor(t, cardMap.get(t.cardId)), 0)
   const misses = recent.map((t) => ({ t, m: missedReward(t, state.cards) })).filter((x) => x.m) as { t: (typeof recent)[number]; m: NonNullable<ReturnType<typeof missedReward>> }[]
   const missedTotal = misses.reduce((a, x) => a + x.m.missed, 0)
   const missByCat = new Map<string, number>()
@@ -65,6 +66,11 @@ export function Insights({ onEditCard }: { onEditCard: (id: string) => void }) {
                 <span className="hero-value num">{money(earned, s)}</span>
                 <span className="muted">earned</span>
               </div>
+              {pointsEarned > 0 && (
+                <div className="faint" style={{ fontSize: 12 }}>
+                  incl. {pointsEarned.toLocaleString(s.locale)} points valued at your ¢/pt
+                </div>
+              )}
               <div className="missed">
                 <b className="num">{money(missedTotal, s)}</b> left on the table across {misses.length} purchases by using the wrong card.
               </div>
@@ -77,7 +83,7 @@ export function Insights({ onEditCard }: { onEditCard: (id: string) => void }) {
                     <div key={cat} className="tip">
                       <CategoryIcon id={cat as never} />
                       <div style={{ flex: 1 }}>
-                        <b>{category(cat as never).label}</b> → use <b>{best.card.nickname}</b> ({best.rate}%)
+                        <b>{category(cat as never).label}</b> → use <b>{best.card.nickname}</b> ({isPoints(best.card) ? `${rateLabel(best.card, cat as never)} ≈ ${best.rate}%` : `${best.rate}%`})
                       </div>
                       <span className="num muted">+{money(v, s)}</span>
                     </div>
@@ -103,7 +109,7 @@ export function Insights({ onEditCard }: { onEditCard: (id: string) => void }) {
             <h2>
               <Trophy size={15} style={{ verticalAlign: -2 }} /> Which card to swipe
             </h2>
-            <span className="sub">Best reward rate per category</span>
+            <span className="sub">Best value per category · points at your ¢/pt</span>
           </div>
           <div className="swipe-grid">
             {SPEND_CATEGORIES.filter((c) => c.id !== 'other').map((c) => {
@@ -120,7 +126,11 @@ export function Insights({ onEditCard }: { onEditCard: (id: string) => void }) {
                       {card && best.rate > 0 ? card.nickname : '—'}
                     </b>
                   </div>
-                  {card && best.rate > 0 && <span className={`rate pcard ${card.theme}`}>{rateFor(card, c.id)}%</span>}
+                  {card && best.rate > 0 && (
+                    <span className={`rate pcard ${card.theme}`} title={isPoints(card) ? `${rateLabel(card, c.id)} at ${card.rewards?.pointValue ?? 1}¢/pt` : undefined}>
+                      {rateFor(card, c.id)}%{isPoints(card) && <small>{rateLabel(card, c.id)}</small>}
+                    </span>
+                  )}
                 </div>
               )
             })}

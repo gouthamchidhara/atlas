@@ -1,7 +1,8 @@
-import { category } from '../domain/categories'
-import { missedReward } from '../domain/rewards'
+import { categoryLabel } from '../domain/categoryInfo'
+import { isPoints, missedReward, rateLabel } from '../domain/rewards'
 import type { AlertRule, AppNotification, AppState, Card, Severity } from '../domain/types'
 import { money } from '../lib/format'
+import { planCard } from '../lib/payments'
 import { daysBetween, nextClose, parseISO, statementCycle } from '../lib/period'
 import { cardBalance, isSpend } from '../lib/stats'
 import { detectSubscriptions } from '../lib/subscriptions'
@@ -72,7 +73,7 @@ export function evaluate(state: AppState, today: string): Candidate[] {
         const budget = state.budgets[tr.category]
         const limit = tr.mode === 'amount' ? tr.value : budget ? (budget * tr.value) / 100 : null
         if (limit && spent >= limit) {
-          const label = category(tr.category).label
+          const label = categoryLabel(tr.category)
           const detail = tr.mode === 'budget-percent' && budget ? `${Math.round((spent / budget) * 100)}% of your ${money(budget, s)} budget` : `past your ${money(tr.value, s)} limit`
           push(month, `${label} at ${money(spent, s)} this month`, `That's ${detail}${rule.cardId ? ` on ${cardName(scopeCards[0])}` : ''}.`, spent >= (budget ?? limit) ? 'critical' : 'warn')
         }
@@ -126,7 +127,22 @@ export function evaluate(state: AppState, today: string): Candidate[] {
         for (const t of fresh) {
           const m = missedReward(t, state.cards)
           if (m && m.missed >= tr.minMissed)
-            push(t.id, `Use ${m.best.nickname} for ${category(t.category).label}`, `${t.merchant} (${money(t.amount, s)}) earned ${m.usedRate}% — ${m.best.nickname} pays ${m.rate}%. Left ${money(m.missed, s)} on the table.`, 'info', { cardId: t.cardId, txId: t.id })
+            push(t.id, `Use ${m.best.nickname} for ${categoryLabel(t.category)}`, `${t.merchant} (${money(t.amount, s)}) earned ${m.usedRate}% — ${m.best.nickname} pays ${isPoints(m.best) ? `${rateLabel(m.best, t.category)} (≈${m.rate}%)` : `${m.rate}%`}. Left ${money(m.missed, s)} on the table.`, 'info', { cardId: t.cardId, txId: t.id })
+        }
+        break
+      case 'payment-due':
+        for (const c of scopeCards) {
+          const p = planCard(c, state.transactions, today, state.settings.targetUtilization ?? 10)
+          if (!p || p.statementRemaining <= 0.005 || p.daysToDue > tr.days) continue
+          const overdue = p.daysToDue < 0
+          const when = overdue ? `was due ${-p.daysToDue} day${p.daysToDue === -1 ? '' : 's'} ago` : p.daysToDue === 0 ? 'is due today' : `is due in ${p.daysToDue} day${p.daysToDue === 1 ? '' : 's'}`
+          push(
+            `${c.id}:${p.dueDate}`,
+            `${c.nickname} payment ${when}`,
+            `Pay ${money(p.statementRemaining, s)} by ${day(p.dueDate)}${p.dueEstimated ? ' (estimated)' : ''} to avoid interest on ${cardName(c)}.`,
+            overdue || p.daysToDue <= 1 ? 'critical' : 'warn',
+            { cardId: c.id },
+          )
         }
         break
     }
@@ -149,8 +165,8 @@ export function describeTrigger(r: AlertRule, state: AppState): string {
       return 'First purchase at a merchant you’ve never paid before'
     case 'category-spend':
       return t.mode === 'amount'
-        ? `${category(t.category).label} spend passes ${money(t.value, s)} in a month`
-        : `${category(t.category).label} reaches ${t.value}% of its monthly budget`
+        ? `${categoryLabel(t.category)} spend passes ${money(t.value, s)} in a month`
+        : `${categoryLabel(t.category)} reaches ${t.value}% of its monthly budget`
     case 'card-spend':
       return `Monthly spend on the card passes ${money(t.amount, s)}`
     case 'utilization':
@@ -163,6 +179,8 @@ export function describeTrigger(r: AlertRule, state: AppState): string {
       return 'A recurring charge changes price'
     case 'better-card':
       return `Another card would have earned ${money(t.minMissed, s)}+ more`
+    case 'payment-due':
+      return `Statement payment due within ${t.days} day${t.days === 1 ? '' : 's'}`
   }
 }
 

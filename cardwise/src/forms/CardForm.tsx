@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { CardVisual } from '../components/CardVisual'
 import { Modal } from '../components/Modal'
 import { SPEND_CATEGORIES } from '../domain/categories'
-import type { Card, CardTheme, CategoryId } from '../domain/types'
+import type { Card, CardTheme, CategoryId, Rewards } from '../domain/types'
 import { uid } from '../lib/format'
 import { useStore } from '../store/store'
 
@@ -29,11 +29,15 @@ export function CardForm({ card, onClose }: { card?: Card; onClose: () => void }
   )
   const set = <K extends keyof Card>(k: K, v: Card[K]) => setC((p) => ({ ...p, [k]: v }))
   const valid = /^\d{4}$/.test(c.last4) && c.nickname.trim() !== ''
+  const r: Rewards = c.rewards ?? { base: 0, rates: {} }
+  const points = r.unit === 'points'
+  const unit = points ? 'x' : '%'
+  const setRewards = (patch: Partial<Rewards>) => set('rewards', { ...r, ...patch })
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!valid) return
-    const out: Card = c.kind === 'debit' ? { ...c, creditLimit: undefined, statementDay: undefined, annualFee: undefined } : c
+    const out: Card = c.kind === 'debit' ? { ...c, creditLimit: undefined, statementDay: undefined, dueDay: undefined, annualFee: undefined } : c
     dispatch({ type: 'card/upsert', card: out })
     onClose()
   }
@@ -127,55 +131,118 @@ export function CardForm({ card, onClose }: { card?: Card; onClose: () => void }
             </>
           )}
           {c.kind === 'credit' && (
-            <label className="field">
-              <span>Annual fee</span>
-              <input
-                className="input num"
-                type="number"
-                min={0}
-                value={c.annualFee ?? ''}
-                onChange={(e) => set('annualFee', e.target.value ? Number(e.target.value) : undefined)}
-                placeholder="0"
-              />
-            </label>
+            <>
+              <label className="field">
+                <span>Payment due day</span>
+                <input
+                  className="input num"
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={c.dueDay ?? ''}
+                  onChange={(e) => set('dueDay', e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="Est. 25 days after close"
+                />
+              </label>
+              <label className="field">
+                <span>Annual fee</span>
+                <input
+                  className="input num"
+                  type="number"
+                  min={0}
+                  value={c.annualFee ?? ''}
+                  onChange={(e) => set('annualFee', e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="0"
+                />
+              </label>
+            </>
           )}
-          <label className="field">
-            <span>Base reward rate (%)</span>
-            <input
-              className="input num"
-              type="number"
-              min={0}
-              step={0.25}
-              value={c.rewards?.base ?? ''}
-              onChange={(e) => set('rewards', { base: Number(e.target.value) || 0, rates: c.rewards?.rates ?? {} })}
-              placeholder={c.kind === 'debit' ? '0' : '1'}
-            />
-          </label>
-          <details className="field full rewards-box" open={!!c.rewards && Object.keys(c.rewards.rates).length > 0}>
-            <summary>Bonus categories (cash-back % or points × value)</summary>
-            <div className="rate-grid">
-              {SPEND_CATEGORIES.filter((x) => x.id !== 'other').map((x) => (
-                <label key={x.id} className="rate-cell">
-                  <i style={{ background: x.color }} />
-                  <span>{x.label}</span>
+          <div className="field full rewards-box">
+            <span>Rewards</span>
+            <div className="row" style={{ gap: 10 }}>
+              <div className="segmented" role="group" aria-label="Reward type">
+                <button type="button" aria-pressed={!points} onClick={() => setRewards({ unit: 'cashback' })}>
+                  Cash back
+                </button>
+                <button type="button" aria-pressed={points} onClick={() => setRewards({ unit: 'points', pointValue: r.pointValue ?? 1 })}>
+                  Points / miles
+                </button>
+              </div>
+              {points && (
+                <>
+                  <input
+                    className="input"
+                    style={{ flex: 1, minWidth: 140 }}
+                    value={r.program ?? ''}
+                    onChange={(e) => setRewards({ program: e.target.value || undefined })}
+                    placeholder="Program, e.g. Ultimate Rewards"
+                    aria-label="Program name"
+                  />
+                  <label className="row" style={{ gap: 6, fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
+                    1 pt =
+                    <input
+                      className="input num"
+                      style={{ width: 76 }}
+                      type="number"
+                      min={0}
+                      step={0.05}
+                      value={r.pointValue ?? ''}
+                      onChange={(e) => setRewards({ pointValue: e.target.value === '' ? undefined : Number(e.target.value) })}
+                      aria-label="Cents per point"
+                    />
+                    ¢
+                  </label>
+                </>
+              )}
+            </div>
+            {points && (
+              <small className="faint">
+                What a point is worth to you depends on how you redeem (cash out ≈1¢, travel transfers often more). Cardwise multiplies earn rate × this value so
+                points and cash back compare fairly.
+              </small>
+            )}
+            <div className="rate-grid" style={{ marginTop: 6 }}>
+              <label className="rate-cell base">
+                <i style={{ background: 'var(--text-3)' }} />
+                <span>Everything else</span>
+                <span className="unit-input">
                   <input
                     className="input num"
                     type="number"
                     min={0}
                     step={0.25}
-                    value={c.rewards?.rates[x.id] ?? ''}
-                    placeholder={String(c.rewards?.base ?? 0)}
-                    onChange={(e) => {
-                      const rates: Partial<Record<CategoryId, number>> = { ...(c.rewards?.rates ?? {}) }
-                      if (e.target.value === '') delete rates[x.id]
-                      else rates[x.id] = Number(e.target.value)
-                      set('rewards', { base: c.rewards?.base ?? 0, rates })
-                    }}
+                    value={c.rewards?.base ?? ''}
+                    placeholder="0"
+                    onChange={(e) => setRewards({ base: Number(e.target.value) || 0 })}
                   />
+                  <em>{unit}</em>
+                </span>
+              </label>
+              {SPEND_CATEGORIES.filter((x) => x.id !== 'other').map((x) => (
+                <label key={x.id} className="rate-cell">
+                  <i style={{ background: x.color }} />
+                  <span>{x.label}</span>
+                  <span className="unit-input">
+                    <input
+                      className="input num"
+                      type="number"
+                      min={0}
+                      step={0.25}
+                      value={c.rewards?.rates[x.id] ?? ''}
+                      placeholder={String(c.rewards?.base ?? 0)}
+                      onChange={(e) => {
+                        const rates: Partial<Record<CategoryId, number>> = { ...r.rates }
+                        if (e.target.value === '') delete rates[x.id]
+                        else rates[x.id] = Number(e.target.value)
+                        setRewards({ rates })
+                      }}
+                    />
+                    <em>{unit}</em>
+                  </span>
                 </label>
               ))}
             </div>
-          </details>
+          </div>
           <div className="field full">
             <span>Style</span>
             <div className="theme-swatches">

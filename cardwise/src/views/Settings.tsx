@@ -1,9 +1,116 @@
-import { Download, Plus, Trash2, Upload } from 'lucide-react'
-import { useState } from 'react'
+import { BellRing, Download, MonitorSmartphone, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { CATEGORIES, category } from '../domain/categories'
 import type { AppState, CategoryId, Settings as S } from '../domain/types'
 import { EMPTY, useStore } from '../store/store'
+import {
+  canInstall,
+  isIOS,
+  isStandalone,
+  lastBackgroundCheck,
+  onPwaChange,
+  promptInstall,
+  runBackgroundCheckNow,
+  setupBackgroundChecks,
+  takePending,
+  type BackgroundStatus,
+} from '../lib/pwa'
+
+const BG_TEXT: Record<BackgroundStatus, string> = {
+  active: 'On — your browser runs alert checks a few times a day, even with Cardwise closed.',
+  'install-needed': 'Install Cardwise as an app to allow checks while it’s closed. Until then, alerts run whenever it’s open.',
+  'permission-needed': 'The browser hasn’t granted background sync yet (it decides based on how often you use the app). Alerts run whenever it’s open.',
+  unsupported: 'This browser doesn’t support background checks (only Chromium-based browsers do). Alerts run whenever Cardwise is open.',
+  'no-worker': 'Background worker not running (it’s disabled in dev mode). Alerts run whenever Cardwise is open.',
+}
+
+function AppPanel({ toast }: { toast: (m: string) => void }) {
+  const { state, dispatch } = useStore()
+  const [, force] = useState(0)
+  const [bg, setBg] = useState<BackgroundStatus | null>(null)
+  const [last, setLast] = useState<string | undefined>()
+  const [perm, setPerm] = useState(() => ('Notification' in window ? Notification.permission : 'unsupported'))
+  useEffect(() => onPwaChange(() => force((n) => n + 1)), [])
+  useEffect(() => {
+    void setupBackgroundChecks().then(setBg)
+    void lastBackgroundCheck().then(setLast)
+  }, [])
+  const installed = isStandalone()
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>App & background alerts</h2>
+          <div className="sub">Install on your phone or desktop; works offline.</div>
+        </div>
+      </div>
+      <div className="setting-row">
+        <MonitorSmartphone size={18} />
+        <div style={{ flex: 1 }}>
+          <b>Install</b>
+          <div className="faint">
+            {installed
+              ? 'Running as an installed app.'
+              : canInstall()
+                ? 'Add Cardwise to your home screen or dock.'
+                : isIOS()
+                  ? 'In Safari: Share → Add to Home Screen.'
+                  : 'Use your browser’s “Install app” menu item (not offered on every browser).'}
+          </div>
+        </div>
+        {!installed && canInstall() && (
+          <button className="btn btn-primary" onClick={() => void promptInstall()}>
+            Install
+          </button>
+        )}
+      </div>
+      <div className="setting-row">
+        <BellRing size={18} />
+        <div style={{ flex: 1 }}>
+          <b>System notifications</b>
+          <div className="faint">
+            {perm === 'granted'
+              ? 'Allowed. Rules with “Push” on will notify you.'
+              : perm === 'denied'
+                ? 'Blocked in browser settings — re-enable them there.'
+                : perm === 'unsupported'
+                  ? 'Not supported here. On iPhone, install the app first (iOS 16.4+).'
+                  : 'Not enabled yet.'}
+          </div>
+        </div>
+        {perm === 'default' && (
+          <button className="btn" onClick={() => void Notification.requestPermission().then(setPerm)}>
+            Allow
+          </button>
+        )}
+      </div>
+      <div className="setting-row">
+        <RefreshCw size={18} />
+        <div style={{ flex: 1 }}>
+          <b>Background checks</b>
+          <div className="faint">{bg ? BG_TEXT[bg] : 'Checking…'}</div>
+          {last && <div className="faint" style={{ fontSize: 11, marginTop: 2 }}>Last background run: {new Date(last).toLocaleString(state.settings.locale)}</div>}
+        </div>
+        {bg !== 'no-worker' && bg !== null && (
+          <button
+            className="btn"
+            onClick={async () => {
+              const n = await runBackgroundCheckNow()
+              const pending = await takePending()
+              if (pending.length) dispatch({ type: 'notif/fire', candidates: pending, now: new Date().toISOString() })
+              void lastBackgroundCheck().then(setLast)
+              toast(n === null ? 'Background worker didn’t respond' : n ? `Background check found ${n} new` : 'Background check: nothing new')
+            }}
+          >
+            Run now
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'INR', 'CAD', 'AUD', 'JPY', 'SGD', 'AED', 'CHF']
 
@@ -129,6 +236,8 @@ export function Settings({ onLoadDemo, toast }: { onLoadDemo: () => void; toast:
             <div className="faint">No custom rules yet.</div>
           )}
         </section>
+
+        <AppPanel toast={toast} />
 
         <section className="panel">
           <div className="panel-head">

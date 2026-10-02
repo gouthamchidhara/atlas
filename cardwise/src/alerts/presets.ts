@@ -11,6 +11,7 @@ export const ALERT_PRESETS: AlertPreset[] = [
   { name: 'Big purchase', blurb: 'Any single charge over an amount', trigger: { kind: 'large-tx', amount: 200 } },
   { name: 'Budget heads-up', blurb: 'A category hits a % of its budget', trigger: { kind: 'category-spend', category: 'dining', mode: 'budget-percent', value: 80 } },
   { name: 'Statement closing', blurb: 'Pay before it reports to bureaus', trigger: { kind: 'statement-soon', days: 3 }, creditOnly: true },
+  { name: 'Payment due', blurb: 'Unpaid statement balance coming due', trigger: { kind: 'payment-due', days: 5 }, creditOnly: true },
   { name: 'High utilization', blurb: 'Balance vs. limit crosses a %', trigger: { kind: 'utilization', percent: 30 }, creditOnly: true },
   { name: 'Wrong card used', blurb: 'Another card would have earned more', trigger: { kind: 'better-card', minMissed: 1 } },
   { name: 'Price hike', blurb: 'A subscription changes price', trigger: { kind: 'subscription-change' } },
@@ -31,4 +32,5 @@ export const KIND_LABEL: Record<AlertTrigger['kind'], string> = {
   expiring: 'Card expiring',
   'subscription-change': 'Subscription price change',
   'better-card': 'Better card available',
+  'payment-due': 'Payment due',
 }

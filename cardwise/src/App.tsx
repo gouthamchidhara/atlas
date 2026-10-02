@@ -1,10 +1,12 @@
-import { Bell, CreditCard, LayoutDashboard, Lightbulb, ListOrdered, PiggyBank, Settings as Cog, Wallet } from 'lucide-react'
+import { Bell, CalendarCheck2, CreditCard, LayoutDashboard, Lightbulb, ListOrdered, PiggyBank, Settings as Cog, Wallet } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertForm } from './alerts/AlertForm'
 import { evaluate } from './alerts/engine'
 import type { AlertRule, Card, Transaction, WidgetConfig } from './domain/types'
 import { Alerts } from './views/Alerts'
 import { Insights } from './views/Insights'
+import { Payments } from './views/Payments'
+import { mirrorState, notify, setupBackgroundChecks, takePending } from './lib/pwa'
 import { WidgetBuilder } from './widgets/WidgetBuilder'
 import { CardForm } from './forms/CardForm'
 import { ImportDialog } from './forms/ImportDialog'
@@ -19,12 +21,13 @@ import { Transactions } from './views/Transactions'
 import { EMPTY_FILTER, type TxFilter } from './views/txFilter'
 import { todayISO } from './lib/format'
 
-type View = 'dashboard' | 'cards' | 'transactions' | 'insights' | 'alerts' | 'budgets' | 'settings'
+type View = 'dashboard' | 'cards' | 'transactions' | 'payments' | 'insights' | 'alerts' | 'budgets' | 'settings'
 
 const NAV: { id: View; label: string; icon: typeof Wallet }[] = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
   { id: 'cards', label: 'Cards', icon: CreditCard },
   { id: 'transactions', label: 'Activity', icon: ListOrdered },
+  { id: 'payments', label: 'Payments', icon: CalendarCheck2 },
   { id: 'insights', label: 'Insights', icon: Lightbulb },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'budgets', label: 'Budgets', icon: PiggyBank },
@@ -101,11 +104,33 @@ export default function App() {
     for (const n of fresh) seen.current.add(n.id)
     if (!fresh.length) return
     toast(fresh.length === 1 ? `🔔 ${fresh[0].title}` : `🔔 ${fresh.length} new alerts`)
-    if ('Notification' in window && Notification.permission === 'granted') {
-      const pushRules = new Set(state.alerts.filter((a) => a.push).map((a) => a.id))
-      for (const n of fresh.filter((x) => pushRules.has(x.ruleId)).slice(0, 3)) new Notification(n.title, { body: n.body, icon: '/favicon.svg', tag: n.key })
-    }
+    const pushRules = new Set(state.alerts.filter((a) => a.push).map((a) => a.id))
+    // skip ones the background worker already showed
+    for (const n of fresh.filter((x) => pushRules.has(x.ruleId) && !x.delivered).slice(0, 3)) void notify(n.title, n.body, n.key)
   }, [state.notifications, state.alerts, toast])
+
+  // Background checks: keep a snapshot in IndexedDB for the service worker,
+  // and pull in anything it found while the app was closed.
+  useEffect(() => {
+    const t = window.setTimeout(() => void mirrorState(state), 400)
+    return () => window.clearTimeout(t)
+  }, [state])
+  useEffect(() => {
+    const pull = () =>
+      void takePending().then((candidates) => {
+        if (candidates.length) dispatch({ type: 'notif/fire', candidates, now: new Date().toISOString() })
+      })
+    pull()
+    void setupBackgroundChecks()
+    const onVisible = () => document.visibilityState === 'visible' && pull()
+    const onMsg = (e: MessageEvent) => e.data?.type === 'navigate' && setView(e.data.hash as View)
+    document.addEventListener('visibilitychange', onVisible)
+    navigator.serviceWorker?.addEventListener('message', onMsg)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      navigator.serviceWorker?.removeEventListener('message', onMsg)
+    }
+  }, [dispatch])
 
   const unread = state.notifications.filter((n) => !n.read).length
 
@@ -175,6 +200,7 @@ export default function App() {
             onImport={() => setModal({ kind: 'import' })}
           />
         )}
+        {view === 'payments' && <Payments onEditCard={(card) => setModal({ kind: 'card', card })} toast={toast} />}
         {view === 'insights' && (
           <Insights
             onEditCard={(id) => {

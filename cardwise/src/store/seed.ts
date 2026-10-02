@@ -42,7 +42,7 @@ export function demoState(base: AppState): AppState {
   const cards: Card[] = [
     {
       id: uid(), nickname: 'Daily Driver', issuer: 'Chase Sapphire', kind: 'credit', network: 'visa', last4: '4821', holder: 'Alex Morgan',
-      expiry: '08/29', theme: 'aurora', creditLimit: 8000, statementDay: 15, annualFee: 95,
+      expiry: '08/29', theme: 'aurora', creditLimit: 8000, statementDay: 15, dueDay: 10, annualFee: 95,
       rewards: { base: 1, rates: { dining: 3, travel: 2, transport: 2 } }, createdAt: created,
     },
     {
@@ -51,8 +51,8 @@ export function demoState(base: AppState): AppState {
     },
     {
       id: uid(), nickname: 'Gold', issuer: 'Amex Gold', kind: 'credit', network: 'amex', last4: '3005', holder: 'Alex Morgan',
-      expiry: '02/28', theme: 'sunset', creditLimit: 2500, statementDay: Math.min(28, now.getDate() + 2), annualFee: 250,
-      rewards: { base: 1, rates: { dining: 4, groceries: 4, travel: 3 } }, createdAt: created,
+      expiry: '02/28', theme: 'sunset', creditLimit: 2500, statementDay: Math.min(28, new Date(now.getFullYear(), now.getMonth(), now.getDate() - 18).getDate()), dueDay: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 5).getDate(), annualFee: 250,
+      rewards: { unit: 'points', program: 'Membership Rewards', pointValue: 1.25, base: 1, rates: { dining: 4, groceries: 4, travel: 3 } }, createdAt: created,
     },
   ]
   const r = rand(42)
@@ -80,7 +80,7 @@ export function demoState(base: AppState): AppState {
       const isLatest = mo === 0 || (mo === 1 && day > now.getDate())
       add(cards[ci].id, d, merchant, isLatest && hiked ? hiked : price)
     }
-    const pay = new Date(now.getFullYear(), now.getMonth() - mo, Math.min(20, daysInMonth))
+    const pay = new Date(now.getFullYear(), now.getMonth() - mo, 20)
     if (pay <= now) add(cards[0].id, pay, 'Payment - Thank You', -700)
     if (pay <= now) add(cards[2].id, pay, 'Payment - Thank You', -200)
   }
@@ -97,6 +97,7 @@ export function demoState(base: AppState): AppState {
     rule('Wrong card used', '', { kind: 'better-card', minMissed: 2 }),
     rule('Price hikes', '', { kind: 'subscription-change' }, true),
     rule('Debit card expiring', cards[1].id, { kind: 'expiring', days: 60 }),
+    rule('Payment due', '', { kind: 'payment-due', days: 5 }, true),
   ]
 
   return {

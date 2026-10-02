@@ -1,5 +1,6 @@
 import type { CategoryId, Transaction } from '../domain/types'
-import { addDays, daysBetween } from './period'
+import { toISO } from './format'
+import { daysBetween, parseISO } from './period'
 import { isSpend } from './stats'
 
 export interface Subscription {
@@ -59,9 +60,16 @@ export function detectSubscriptions(txs: Transaction[], today: string): Subscrip
       change: moved ? last.amount - prev.amount : null,
       charges: sorted,
       last: last.date,
-      next: addDays(last.date, Math.round(gap)),
+      next: sameDayNextMonth(last.date),
       annual: last.amount * 12,
     })
   }
   return out.sort((a, b) => b.amount - a.amount)
+}
+
+/** Monthly billers charge on the same day-of-month (clamped for short months). */
+function sameDayNextMonth(iso: string) {
+  const d = parseISO(iso)
+  const last = new Date(d.getFullYear(), d.getMonth() + 2, 0).getDate()
+  return toISO(new Date(d.getFullYear(), d.getMonth() + 1, Math.min(d.getDate(), last)))
 }

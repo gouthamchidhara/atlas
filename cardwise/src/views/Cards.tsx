@@ -1,5 +1,6 @@
 import { BellPlus, CalendarClock, Plus } from 'lucide-react'
 import { category } from '../domain/categories'
+import { pointsFor } from '../domain/rewards'
 import { CardVisual } from '../components/CardVisual'
 import type { Card } from '../domain/types'
 import { money, monthKey, todayISO } from '../lib/format'
@@ -75,12 +76,30 @@ export function Cards({ onAdd, onEdit, onOpen, onAlert }: { onAdd: () => void; o
                       .map(([cat, r]) => (
                         <span key={cat} className="chip">
                           <i className="dot" style={{ background: category(cat as never).color }} />
-                          {r}% {category(cat as never).label}
+                          {c.rewards!.unit === 'points' ? `${r}x` : `${r}%`} {category(cat as never).label}
                         </span>
                       ))}
-                    <span className="chip">{c.rewards.base}% else</span>
+                    <span className="chip">
+                      {c.rewards.unit === 'points' ? `${c.rewards.base}x` : `${c.rewards.base}%`} else
+                    </span>
+                    {c.rewards.unit === 'points' && (
+                      <span className="chip">
+                        {c.rewards.program ? `${c.rewards.program} · ` : ''}
+                        {c.rewards.pointValue ?? 1}¢/pt
+                      </span>
+                    )}
                   </div>
                 )}
+                {c.rewards?.unit === 'points' &&
+                  (() => {
+                    const yr = todayISO().slice(0, 4)
+                    const pts = state.transactions.filter((t) => t.cardId === c.id && t.date.startsWith(yr)).reduce((a, t) => a + pointsFor(t, c), 0)
+                    return (
+                      <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+                        <b className="num">{pts.toLocaleString(s.locale)} pts</b> earned this year ≈ {money((pts * (c.rewards!.pointValue ?? 1)) / 100, s)}
+                      </div>
+                    )
+                  })()}
                 {(() => {
                   const n = state.alerts.filter((a) => a.cardId === c.id && a.enabled).length
                   return n ? (
