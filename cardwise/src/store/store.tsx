@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useReducer, type Dispatch, type ReactNode } from 'react'
 import { categorize } from '../domain/categories'
-import type { AppState, Card, CategoryId, CategoryRule, Settings, Transaction } from '../domain/types'
+import type { AlertRule, AppNotification, AppState, Card, CategoryId, CategoryRule, Settings, Transaction, WidgetConfig } from '../domain/types'
+import type { Candidate } from '../alerts/engine'
+import { DEFAULT_WIDGETS } from '../widgets/presets'
 import { uid } from '../lib/format'
 
 const STORAGE_KEY = 'cardwise:v1'
@@ -20,7 +22,13 @@ export const EMPTY: AppState = {
   budgets: {},
   rules: [],
   settings: { currency: 'USD', locale: safeLocale(navigator.language), theme: 'system' },
+  widgets: DEFAULT_WIDGETS,
+  alerts: [],
+  notifications: [],
+  firedKeys: [],
 }
+
+const MAX_NOTIFICATIONS = 200
 
 export type Action =
   | { type: 'card/upsert'; card: Card }
@@ -34,6 +42,15 @@ export type Action =
   | { type: 'rule/delete'; id: string }
   | { type: 'settings/set'; settings: Partial<Settings> }
   | { type: 'state/replace'; state: AppState }
+  | { type: 'widget/upsert'; widget: WidgetConfig }
+  | { type: 'widget/delete'; id: string }
+  | { type: 'widget/move'; id: string; to: number }
+  | { type: 'alert/upsert'; alert: AlertRule }
+  | { type: 'alert/delete'; id: string }
+  | { type: 'alert/toggle'; id: string }
+  | { type: 'notif/fire'; candidates: Candidate[]; now: string }
+  | { type: 'notif/read'; id: string | 'all' }
+  | { type: 'notif/delete'; id: string | 'all' }
 
 const sortTxs = (txs: Transaction[]) => [...txs].sort((a, b) => b.date.localeCompare(a.date))
 
@@ -48,6 +65,8 @@ function reducer(state: AppState, a: Action): AppState {
         ...state,
         cards: state.cards.filter((c) => c.id !== a.id),
         transactions: state.transactions.filter((t) => t.cardId !== a.id),
+        alerts: state.alerts.filter((r) => r.cardId !== a.id),
+        widgets: state.widgets.map((w) => ({ ...w, cardIds: w.cardIds.filter((id) => id !== a.id) })),
       }
     case 'tx/upsert': {
       const exists = state.transactions.some((t) => t.id === a.tx.id)
@@ -83,6 +102,43 @@ function reducer(state: AppState, a: Action): AppState {
       return { ...state, settings: { ...state.settings, ...a.settings } }
     case 'state/replace':
       return a.state
+    case 'widget/upsert': {
+      const exists = state.widgets.some((w) => w.id === a.widget.id)
+      return { ...state, widgets: exists ? state.widgets.map((w) => (w.id === a.widget.id ? a.widget : w)) : [...state.widgets, a.widget] }
+    }
+    case 'widget/delete':
+      return { ...state, widgets: state.widgets.filter((w) => w.id !== a.id) }
+    case 'widget/move': {
+      const from = state.widgets.findIndex((w) => w.id === a.id)
+      if (from < 0) return state
+      const widgets = [...state.widgets]
+      const [w] = widgets.splice(from, 1)
+      widgets.splice(Math.max(0, Math.min(a.to, widgets.length)), 0, w)
+      return { ...state, widgets }
+    }
+    case 'alert/upsert': {
+      const exists = state.alerts.some((r) => r.id === a.alert.id)
+      return { ...state, alerts: exists ? state.alerts.map((r) => (r.id === a.alert.id ? a.alert : r)) : [a.alert, ...state.alerts] }
+    }
+    case 'alert/delete':
+      return { ...state, alerts: state.alerts.filter((r) => r.id !== a.id), notifications: state.notifications.filter((n) => n.ruleId !== a.id) }
+    case 'alert/toggle':
+      return { ...state, alerts: state.alerts.map((r) => (r.id === a.id ? { ...r, enabled: !r.enabled } : r)) }
+    case 'notif/fire': {
+      const fired = new Set(state.firedKeys)
+      const fresh: AppNotification[] = []
+      for (const c of a.candidates) {
+        if (fired.has(c.key)) continue
+        fired.add(c.key)
+        fresh.push({ ...c, id: uid(), createdAt: a.now, read: false })
+      }
+      if (!fresh.length) return state
+      return { ...state, firedKeys: [...fired].slice(-2000), notifications: [...fresh, ...state.notifications].slice(0, MAX_NOTIFICATIONS) }
+    }
+    case 'notif/read':
+      return { ...state, notifications: state.notifications.map((n) => (a.id === 'all' || n.id === a.id ? { ...n, read: true } : n)) }
+    case 'notif/delete':
+      return { ...state, notifications: a.id === 'all' ? [] : state.notifications.filter((n) => n.id !== a.id) }
   }
 }
 

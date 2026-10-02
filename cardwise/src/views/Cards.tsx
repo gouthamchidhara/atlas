@@ -1,4 +1,5 @@
-import { CalendarClock, Plus } from 'lucide-react'
+import { BellPlus, CalendarClock, Plus } from 'lucide-react'
+import { category } from '../domain/categories'
 import { CardVisual } from '../components/CardVisual'
 import type { Card } from '../domain/types'
 import { money, monthKey, todayISO } from '../lib/format'
@@ -12,7 +13,7 @@ function nextStatement(day: number) {
   return Math.ceil((d.getTime() - now.getTime()) / 86_400_000)
 }
 
-export function Cards({ onAdd, onEdit, onOpen }: { onAdd: () => void; onEdit: (c: Card) => void; onOpen: (c: Card) => void }) {
+export function Cards({ onAdd, onEdit, onOpen, onAlert }: { onAdd: () => void; onEdit: (c: Card) => void; onOpen: (c: Card) => void; onAlert: (c: Card) => void }) {
   const { state } = useStore()
   const s = state.settings
   const month = inMonth(state.transactions, monthKey(todayISO()))
@@ -45,9 +46,14 @@ export function Cards({ onAdd, onEdit, onOpen }: { onAdd: () => void; onEdit: (c
                       {money(spent, s)}
                     </div>
                   </div>
-                  <button className="btn" onClick={() => onOpen(c)}>
-                    Transactions
-                  </button>
+                  <div className="row" style={{ gap: 6 }}>
+                    <button className="btn btn-icon" aria-label={`Add alert for ${c.nickname}`} title="Add alert" onClick={() => onAlert(c)}>
+                      <BellPlus size={15} />
+                    </button>
+                    <button className="btn" onClick={() => onOpen(c)}>
+                      Activity
+                    </button>
+                  </div>
                 </div>
                 {c.kind === 'credit' && c.creditLimit ? (
                   <div style={{ marginTop: 14 }}>
@@ -62,6 +68,27 @@ export function Cards({ onAdd, onEdit, onOpen }: { onAdd: () => void; onEdit: (c
                     </div>
                   </div>
                 ) : null}
+                {c.rewards && (c.rewards.base > 0 || Object.keys(c.rewards.rates).length > 0) && (
+                  <div className="row" style={{ marginTop: 12, gap: 6 }}>
+                    {Object.entries(c.rewards.rates)
+                      .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+                      .map(([cat, r]) => (
+                        <span key={cat} className="chip">
+                          <i className="dot" style={{ background: category(cat as never).color }} />
+                          {r}% {category(cat as never).label}
+                        </span>
+                      ))}
+                    <span className="chip">{c.rewards.base}% else</span>
+                  </div>
+                )}
+                {(() => {
+                  const n = state.alerts.filter((a) => a.cardId === c.id && a.enabled).length
+                  return n ? (
+                    <div className="faint" style={{ fontSize: 12, marginTop: 10 }}>
+                      {n} alert{n === 1 ? '' : 's'} watching this card
+                    </div>
+                  ) : null
+                })()}
                 {c.kind === 'credit' && c.statementDay ? (
                   <div className="row faint" style={{ marginTop: 12, fontSize: 12 }}>
                     <CalendarClock size={14} /> Statement closes in {nextStatement(c.statementDay)} days

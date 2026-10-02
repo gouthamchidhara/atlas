@@ -2,7 +2,8 @@ import { Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { CardVisual } from '../components/CardVisual'
 import { Modal } from '../components/Modal'
-import type { Card, CardTheme } from '../domain/types'
+import { SPEND_CATEGORIES } from '../domain/categories'
+import type { Card, CardTheme, CategoryId } from '../domain/types'
 import { uid } from '../lib/format'
 import { useStore } from '../store/store'
 
@@ -32,7 +33,7 @@ export function CardForm({ card, onClose }: { card?: Card; onClose: () => void }
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!valid) return
-    const out: Card = c.kind === 'debit' ? { ...c, creditLimit: undefined, statementDay: undefined } : c
+    const out: Card = c.kind === 'debit' ? { ...c, creditLimit: undefined, statementDay: undefined, annualFee: undefined } : c
     dispatch({ type: 'card/upsert', card: out })
     onClose()
   }
@@ -125,6 +126,56 @@ export function CardForm({ card, onClose }: { card?: Card; onClose: () => void }
               </label>
             </>
           )}
+          {c.kind === 'credit' && (
+            <label className="field">
+              <span>Annual fee</span>
+              <input
+                className="input num"
+                type="number"
+                min={0}
+                value={c.annualFee ?? ''}
+                onChange={(e) => set('annualFee', e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="0"
+              />
+            </label>
+          )}
+          <label className="field">
+            <span>Base reward rate (%)</span>
+            <input
+              className="input num"
+              type="number"
+              min={0}
+              step={0.25}
+              value={c.rewards?.base ?? ''}
+              onChange={(e) => set('rewards', { base: Number(e.target.value) || 0, rates: c.rewards?.rates ?? {} })}
+              placeholder={c.kind === 'debit' ? '0' : '1'}
+            />
+          </label>
+          <details className="field full rewards-box" open={!!c.rewards && Object.keys(c.rewards.rates).length > 0}>
+            <summary>Bonus categories (cash-back % or points × value)</summary>
+            <div className="rate-grid">
+              {SPEND_CATEGORIES.filter((x) => x.id !== 'other').map((x) => (
+                <label key={x.id} className="rate-cell">
+                  <i style={{ background: x.color }} />
+                  <span>{x.label}</span>
+                  <input
+                    className="input num"
+                    type="number"
+                    min={0}
+                    step={0.25}
+                    value={c.rewards?.rates[x.id] ?? ''}
+                    placeholder={String(c.rewards?.base ?? 0)}
+                    onChange={(e) => {
+                      const rates: Partial<Record<CategoryId, number>> = { ...(c.rewards?.rates ?? {}) }
+                      if (e.target.value === '') delete rates[x.id]
+                      else rates[x.id] = Number(e.target.value)
+                      set('rewards', { base: c.rewards?.base ?? 0, rates })
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          </details>
           <div className="field full">
             <span>Style</span>
             <div className="theme-swatches">

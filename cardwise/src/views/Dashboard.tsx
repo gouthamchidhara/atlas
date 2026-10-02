@@ -1,25 +1,28 @@
-import { Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
+import { Bell, Check, LayoutGrid, Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
+import { useState } from 'react'
 import { CardVisual } from '../components/CardVisual'
-import { CategoryBreakdown } from '../components/CategoryBreakdown'
-import { CategoryIcon } from '../components/CategoryIcon'
 import { MonthlyBars } from '../components/MonthlyBars'
-import { TransactionList } from '../components/TransactionList'
-import type { Card, CategoryId } from '../domain/types'
+import type { Card, WidgetConfig } from '../domain/types'
 import { money, monthKey, monthLabel, todayISO } from '../lib/format'
-import { inMonth, lastMonths, spendByMonth, topMerchants, totalSpend } from '../lib/stats'
+import { inMonth, lastMonths, spendByMonth, totalSpend } from '../lib/stats'
 import { useStore } from '../store/store'
+import { Widget } from '../widgets/Widget'
+import { NotificationItem } from './Alerts'
 
 interface Props {
   onAddCard: () => void
   onEditCard: (c: Card) => void
   onAddTx: () => void
-  onOpenCategory: (c: CategoryId) => void
-  onSeeAll: () => void
   onLoadDemo: () => void
+  onWidget: (w?: WidgetConfig) => void
+  onOpenAlerts: () => void
 }
 
-export function Dashboard({ onAddCard, onEditCard, onAddTx, onOpenCategory, onSeeAll, onLoadDemo }: Props) {
-  const { state } = useStore()
+export function Dashboard({ onAddCard, onEditCard, onAddTx, onLoadDemo, onWidget, onOpenAlerts }: Props) {
+  const { state, dispatch } = useStore()
+  const [editing, setEditing] = useState(false)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const unread = state.notifications.filter((n) => !n.read)
   const s = state.settings
   const cur = monthKey(todayISO())
   const months = lastMonths(cur, 6)
@@ -116,50 +119,80 @@ export function Dashboard({ onAddCard, onEditCard, onAddTx, onOpenCategory, onSe
           </div>
         </section>
 
-        <section className="panel span-5">
-          <div className="panel-head">
-            <h2>Where it went</h2>
-            <span className="sub">This month · tap to filter</span>
-          </div>
-          <CategoryBreakdown txs={thisMonth} onPick={onOpenCategory} />
-        </section>
+      </div>
 
-        <section className="panel span-7">
+      {unread.length > 0 && (
+        <section className="panel alert-strip">
           <div className="panel-head">
-            <h2>Recent activity</h2>
-            <button className="btn btn-ghost" onClick={onSeeAll}>
-              See all
+            <h2>
+              <Bell size={15} style={{ verticalAlign: -2 }} /> {unread.length} new alert{unread.length === 1 ? '' : 's'}
+            </h2>
+            <button className="btn btn-ghost" onClick={onOpenAlerts}>
+              Open inbox
             </button>
           </div>
-          <TransactionList txs={state.transactions} limit={8} />
-        </section>
-
-        <section className="panel span-12">
-          <div className="panel-head">
-            <h2>Top merchants</h2>
-            <span className="sub">This month</span>
+          <div className="notif-list compact two">
+            {unread.slice(0, 2).map((n) => (
+              <NotificationItem key={n.id} n={n} />
+            ))}
           </div>
-          {topMerchants(thisMonth, 5).length ? (
-            <div className="cat-list">
-              {topMerchants(thisMonth, 5).map((m) => (
-                <div className="cat-item" key={m.merchant} style={{ cursor: 'default' }}>
-                  <CategoryIcon id={m.category} />
-                  <div>
-                    <div className="name" style={{ marginBottom: 0 }}>
-                      <span>{m.merchant}</span>
-                    </div>
-                    <div className="faint" style={{ fontSize: 12 }}>
-                      {m.count} {m.count === 1 ? 'visit' : 'visits'}
-                    </div>
-                  </div>
-                  <div className="amt num">{money(m.total, s)}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty">Nothing yet this month.</div>
-          )}
         </section>
+      )}
+
+      <div className="section-head">
+        <h2>
+          <LayoutGrid size={16} style={{ verticalAlign: -3 }} /> Your widgets
+        </h2>
+        <div className="row">
+          <button className="btn" onClick={() => setEditing((e) => !e)} aria-pressed={editing}>
+            {editing ? (
+              <>
+                <Check size={15} /> Done
+              </>
+            ) : (
+              'Customize'
+            )}
+          </button>
+          <button className="btn btn-primary" onClick={() => onWidget()}>
+            <Plus size={15} /> Add widget
+          </button>
+        </div>
+      </div>
+      {editing && <p className="faint" style={{ marginTop: -6 }}>Drag widgets by the handle to reorder. Edit to change size, scope or chart.</p>}
+      <div className="grid grid-dash">
+        {state.widgets.map((w, i) => (
+          <Widget
+            key={w.id}
+            w={w}
+            state={state}
+            editing={editing}
+            onEdit={() => onWidget(w)}
+            onDelete={() => dispatch({ type: 'widget/delete', id: w.id })}
+            dragProps={
+              editing
+                ? {
+                    draggable: true,
+                    onDragStart: (e) => {
+                      setDragId(w.id)
+                      e.dataTransfer.effectAllowed = 'move'
+                    },
+                    onDragOver: (e) => e.preventDefault(),
+                    onDrop: (e) => {
+                      e.preventDefault()
+                      if (dragId && dragId !== w.id) dispatch({ type: 'widget/move', id: dragId, to: i })
+                      setDragId(null)
+                    },
+                    onDragEnd: () => setDragId(null),
+                    style: dragId === w.id ? { opacity: 0.4 } : undefined,
+                  }
+                : undefined
+            }
+          />
+        ))}
+        <button className="add-widget span-4" onClick={() => onWidget()}>
+          <Plus size={22} />
+          Add widget
+        </button>
       </div>
     </>
   )
